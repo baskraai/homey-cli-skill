@@ -27,6 +27,7 @@ Gotchas observed in practice while using the Homey CLI. Read this when troublesh
 - [`AND`-push confirm cards are fragile on Android](#and-push-confirm-cards-are-fragile-on-android)
 - [Voice assistants only see standard, favorited flows](#voice-assistants-only-see-standard-favorited-flows)
 - [Spontaneous flow firing is almost always device-side automation](#spontaneous-flow-firing-is-almost-always-device-side-automation)
+- [Group-app (`com.swttt.devicegroups`) devices can't be created via API](#group-app-comswtttdevicegroups-devices-cant-be-created-via-api)
 - [Risk tiers](#risk-tiers)
 
 ## Active-Homey discipline
@@ -286,6 +287,22 @@ When the user reports "the light came on but no flow fired" or "the heater turne
 Disable Homey's flow temporarily; if the behaviour persists, the source is external. This saves hours of "is my flow broken?" debugging.
 
 Source: [licht-gaat-zelf-weer-aan-zonder-flow-beweging/73832](https://community.homey.app/t/licht-gaat-zelf-weer-aan-zonder-flow-beweging/73832).
+
+## Group-app (`com.swttt.devicegroups`) devices can't be created via API
+
+The public GitHub source (`github.com/swttt/com.swttt.devicegroups`) is stale — v1.1.0, a single generic `devicegroup` driver — vs. the v3.3.0 typically installed, which has ~28 class-specific driver ids (`other.united`, `sensor.temperature`, etc.) and a richer per-capability settings model (`mean`/`median`/`max`/`min`/`sum`/`ignore`/...). Don't trust the repo for pairing-protocol details.
+
+**New group devices must be paired manually through the Homey app.** The pairing-session API (`create-pair-session`, `emit-pairing-event`, `create-pair-session-device`) is real, but:
+
+- `emit-pairing-event` gives **zero feedback** on whether the driver handled it — a deliberately bogus event name returns the exact same bare `null` as a real one, so there's no way to verify a scripted pairing choreography actually worked.
+- Even calling `create-pair-session-device` directly with a full device object (settings cloned from a working group device) creates *a* device, but its capability values never update. The source-device linkage lives in an internal `store` field invisible to every read API, including raw `GET /api/manager/devices/device/:id`.
+
+Once a group device is paired (manually), its settings ARE scriptable:
+
+- Aggregation mode per capability: `set-device-settings --body '{"<capability>": "mean"}'` (or `median`/`max`/`min`/`sum`/`ignore`/...).
+- This only changes behavior of a capability already exposed at pairing time — it does **not** add or remove entries in the device's `capabilities` array. Flipping an unexposed capability's setting to `"mean"` is a silent no-op; flipping an exposed one to `"ignore"` doesn't hide it either, it just freezes its last value.
+- The settings model only covers a fixed capability whitelist — no key exists at all for `measure_voc` or `level_aqi`, so those readings can never be grouped by this app, even via manual repair, regardless of what the source devices report.
+- `update-device --body '{"hidden": true}'` is a genuine, reversible way to hide the raw source devices from a zone once they're grouped, without touching any flow-card references to them.
 
 ## Risk tiers
 

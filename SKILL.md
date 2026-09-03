@@ -108,7 +108,7 @@ The 8-step workflow below is the spine of this skill. Follow it in order — eve
 4. **Resolve trigger args.** For each arg type (`device`, `autocomplete`, `dropdown`, etc.), use the matching CLI lookup to obtain a valid value. Arg-type details: `references/flow-cards.md`.
 5. **Repeat 2–4 for condition(s)** using `get-flow-card-conditions`. Note `inverted: true` for "is NOT".
 6. **Repeat 2–4 for action(s)** using `get-flow-card-actions`. Action args may interpolate tokens with syntax `[[homey:app:<id>|<token>]]`.
-7. **Compose the flow JSON.** Copy a skeleton from `assets/flow-templates/`. Generate fresh UUIDs (`uuidgen`). Fill `args`, link via `outputSuccess` / `outputTrue` / `outputFalse` / `outputError`. For advanced control cards, use building blocks from `assets/flow-templates/card-primitives/`. Field-by-field schema: `references/flow-json-schema.md`.
+7. **Compose the flow JSON.** Copy a skeleton from `assets/flow-templates/`. Generate fresh UUIDs (`uuidgen`). Fill `args`, link via `outputSuccess` / `outputTrue` / `outputFalse` / `outputError`. For advanced control cards, use building blocks from `assets/flow-templates/card-primitives/`. Field-by-field schema: `references/flow-json-schema.md`. Generating coordinates programmatically for many cards? See `references/flow-layout.md` for spacing heuristics that keep connectors legible.
 8. **Validate, push, verify.**
    - Run the 10-point validation checklist from `references/flow-json-schema.md` and tick each item explicitly in output.
    - On update: back up first — `homey api flow get-…-flow --id <id> --json > /tmp/homey-backup-$(date +%Y%m%d-%H%M%S)/before.json`.
@@ -231,6 +231,7 @@ Beyond the MCP, this skill also covers: raw API to ~50 managers, app inventory w
 | `references/managers-cheatsheet.md` | Per-manager command index — top 3-5 ops per manager |
 | `references/flow-cards.md` | Card taxonomy, discovery, 12 arg types, tokens, worked example |
 | `references/flow-json-schema.md` | Authoritative JSON shape (advanced + standard), 10-point validation checklist, round-trip workflow, template usage |
+| `references/flow-layout.md` | Auto-layout heuristics for programmatically generated flows: column/row spacing, convergence/divergence points, same-level connector-arc avoidance, text-card sizing |
 | `references/homeyscript.md` | Decision tree (when not to use HomeyScript), CRUD, template walkthrough |
 | `references/recipes.md` | Ready-to-paste snippets — backup, audit, bulk ops, search |
 | `references/pitfalls.md` | Active-Homey discipline, broken:false trap, jq quirks, sun-offset / delay / any-all gotchas, risk-tier table |
