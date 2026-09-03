@@ -35,3 +35,26 @@ Connectors visually exit from the **bottom** of a card. If a child's computed `y
 ## Give section notes room to breathe
 
 If cards are grouped into logical sections marked by `note` cards, give the note extra vertical gap (~1.6x base row height) before the first real card — otherwise a chain starting right after the note crowds the section header.
+
+## Reset the row counter per column, not globally
+
+A single row counter incremented across the *whole* card set — instead of reset at the start of each column — assigns every card its own row even though only cards *sharing a column* can visually collide (different columns already sit at different `x`). Observed: a 110-card flow rendered ~24,000px tall for no structural reason.
+
+```python
+# Wrong — one counter for the entire graph
+row = 0
+for card in topological_order:
+    y[card] = row * ROW_H
+    row += 1
+
+# Right — counter resets per column, ordered by parent barycenter
+for col, cards_in_col in columns.items():
+    for row, card in enumerate(cards_in_col):
+        y[card] = row * ROW_H
+```
+
+## Anchor section notes by identity, not by re-measuring the previous layout
+
+An iterative layout script (fetch flow → reposition → push → repeat, e.g. across several rounds of visual feedback) can be tempted to reposition a `note` by finding its nearest card neighbors in the *previously fetched* file and anchoring near wherever those ended up now. This compounds silent drift: after just one or two passes a section-header note landed next to an unrelated section's trigger cards, because "nearest card in last pass's layout" quietly stopped meaning "the card this note is actually about."
+
+Anchor by a stable property instead — the note's own `value` text, or an explicit note-id → section mapping maintained across passes — and place it relative to the known bounds of its own logical section/component. Never re-derive a note's position from distances measured in a file that may already be wrong.
