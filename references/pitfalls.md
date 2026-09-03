@@ -6,12 +6,14 @@ Gotchas observed in practice while using the Homey CLI. Read this when troublesh
 
 - [Active-Homey discipline](#active-homey-discipline)
 - [`broken: false` lies about dead refs](#broken-false-lies-about-dead-refs)
+- [`logic:lt`/`gt` conditions compare a cached value, not a live poll](#logicltgt-conditions-compare-a-cached-value-not-a-live-poll)
 - [Interactive prompts hang in agent contexts](#interactive-prompts-hang-in-agent-contexts)
 - [`--jq` is CLI-side, not local `jq`](#--jq-is-cli-side-not-local-jq)
 - [App `name` can be string or i18n object](#app-name-can-be-string-or-i18n-object)
 - [`set-capability-value` primitives need `--request-json`](#set-capability-value-primitives-need---request-json)
 - [Active-Homey cache is on-disk](#active-homey-cache-is-on-disk)
 - [Token-mode for direct IP access](#token-mode-for-direct-ip-access)
+- [Cloud API rate limits are shared account-wide, not per-process](#cloud-api-rate-limits-are-shared-account-wide-not-per-process)
 - [Update silently overwrites — always back up](#update-silently-overwrites--always-back-up)
 - [Self-resetting relays — pulse with `:on`, not `:on` + `:off`](#self-resetting-relays--pulse-with-on-not-on--off)
 - [Sun-offset triggers fire **once**, not during a window](#sun-offset-triggers-fire-once-not-during-a-window)
@@ -21,6 +23,7 @@ Gotchas observed in practice while using the Homey CLI. Read this when troublesh
 - [Action arguments shouldn't depend on the triggering device](#action-arguments-shouldnt-depend-on-the-triggering-device)
 - [Flow Exchanger strings aren't the same schema as `create-advanced-flow`](#flow-exchanger-strings-arent-the-same-schema-as-create-advanced-flow)
 - ["Before sunset" / "Before sunrise" mean window, not earlier-than](#before-sunset--before-sunrise-mean-window-not-earlier-than)
+- [`cron:after_sunrise`/`after_sunset` are a different, instant-based card family](#cronafter_sunriseafter_sunset-are-a-different-instant-based-card-family)
 - [`AND`-push confirm cards are fragile on Android](#and-push-confirm-cards-are-fragile-on-android)
 - [Voice assistants only see standard, favorited flows](#voice-assistants-only-see-standard-favorited-flows)
 - [Spontaneous flow firing is almost always device-side automation](#spontaneous-flow-firing-is-almost-always-device-side-automation)
@@ -48,6 +51,22 @@ Anyone sharing the skill: when handing it to a teammate, also share which Homey 
 A flow can reference a `homey:device:<id>` or `homey:zone:<id>` that no longer exists and still report `broken: false`. Observed first-hand on flows whose trigger zone was deleted and luminance sensor was removed — Homey kept the flow marked healthy. The main automation path silently never fired.
 
 **Implication:** the `broken` flag is a necessary check, not a sufficient one. After every push (and during audits) re-resolve every device/zone reference in the flow's `cards` against live `get-devices` / `get-zones`. See `flow-json-schema.md` for the case study and the jq one-liner.
+
+## `logic:lt`/`gt` conditions compare a cached value, not a live poll
+
+The `homey:manager:logic:lt` / `logic:gt` condition cards compare a `droptoken` (e.g. `homey:device:<id>|measure_luminance`) against whatever value is **currently cached** on that device's capability — not a live read taken when the flow runs. Sleepy/battery Zigbee end devices (motion sensors, contact sensors) only push capability updates when they have something to report, so if the device goes quiet or drops off the mesh, the cached value can sit stale for days or weeks while the flow keeps evaluating against it — silently, with `broken: false` still showing.
+
+Observed: a kitchen motion/light sensor (IKEA VALLHORN) stopped reporting for ~19 days. A flow gating "turn lights on" on `measure_luminance < 10` kept comparing against the last cached value (`11`, not `< 10`) the whole time — the automation looked healthy but never fired.
+
+**Debug check:** for every `droptoken` referenced by a misbehaving flow, run
+
+```bash
+homey api devices get-device --id <id> --json --jq '.capabilitiesObj.<capability>.lastUpdated'
+```
+
+and compare against current time. A stale timestamp on a capability that should update frequently (motion in a high-traffic room, luminance on a daylight sensor) points at a dead/offline device, not a flow-logic bug.
+
+**Resilience pattern:** don't gate a critical automation on one sensor's cached value alone — see `community-patterns.md#pattern-sensor-independent-is-it-dark-fallback`.
 
 ## Interactive prompts hang in agent contexts
 
@@ -118,6 +137,19 @@ The active Homey id lives in a per-machine cache directory (managed by the `home
 - Using a guest token (non-owner access).
 
 The bearer token comes from `homey api sessions create-session` or from the Homey developer tools.
+
+## Cloud API rate limits are shared account-wide, not per-process
+
+`homey api …` calls go through Homey's cloud, and its rate limit is scoped to the **account/connection**, not to the calling process or terminal. Running multiple concurrent CLI sessions against the same Homey (e.g. several agent sessions in parallel) can trip a shared `{"error": "Too many requests."}` (429) that keeps returning for **all** of them, even ones that stop calling — because each other session's traffic keeps the shared budget consumed.
+
+Observed: three concurrent Claude Code sessions against the same Homey each hit persistent 429s; the throttle didn't clear after ~5 minutes of total silence across all three, and took roughly 20+ minutes of full silence before any of them succeeded again — consistent with a longer-duration (possibly hourly-scale) account quota, not a short per-minute limiter.
+
+**If you hit persistent 429s:**
+
+1. Check for other active sessions before assuming it's a bug — a peer running the same skill against the same Homey is the most common cause.
+2. Don't backoff-and-retry solo if others might be doing the same — each retry resets the shared window. Coordinate a shared pause instead.
+3. Expect the cooldown to take tens of minutes, not seconds.
+4. After a suspected clear, send one lightweight probe (`homey api zones get-zones --json --jq 'keys | length'`) before resuming normal call volume.
 
 ## Update silently overwrites — always back up
 
@@ -208,6 +240,15 @@ The Logic time-condition cards `is_before_sunset` and `is_before_sunrise` descri
 A flow that reads "AND it's before sunrise AND it's before sunset" via OR is true 24/7 and fires all night. The community recurringly reads these as "the current time is earlier than today's sunrise" — it isn't.
 
 **Right pattern:** single `is_sun_event_between` card with explicit offsets, or two `is_after`/`is_before` cards combined with a single AND. See [how-homey-implements-sunset-and-sunrise/151358](https://community.homey.app/t/how-homey-implements-sunset-and-sunrise/151358).
+
+## `cron:after_sunrise`/`after_sunset` are a different, instant-based card family
+
+Don't confuse these with the Logic app's `is_before_sunset`/`is_before_sunrise` window cards above. `homey:manager:cron:after_sunrise` and `homey:manager:cron:after_sunset` are separate condition cards (`ownerUri: homey:manager:cron`) with no `args` — the toggle between "after" and "before" in the card's title (`It's !{{after|before}} sunrise`) is controlled by the flow JSON's `inverted` boolean, not a dropdown arg:
+
+- `after_sunrise`, `inverted: true` → true before today's sunrise.
+- `after_sunset`, `inverted: false` → true after today's sunset.
+
+These read as simple instant comparisons (not the sunset-to-sunrise window the Logic cards above describe), and are astronomically calculated server-side, so they never go stale like a physical sensor. See `community-patterns.md#pattern-sensor-independent-is-it-dark-fallback` for a resilience pattern that OR-combines them with a luminance condition.
 
 ## `AND`-push confirm cards are fragile on Android
 

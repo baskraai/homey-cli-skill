@@ -10,6 +10,7 @@ Sources are real threads — IDs given so the assistant can fetch fresh discussi
 - [Flow Exchanger format — gzip+base64 bundle](#flow-exchanger-format--gzipbase64-bundle)
 - [Pattern: house-modes state machine (Day / Evening / Night / Away / Vacation)](#pattern-house-modes-state-machine-day--evening--night--away--vacation)
 - [Pattern: motion + sun-window light](#pattern-motion--sun-window-light)
+- [Pattern: sensor-independent "is it dark" fallback](#pattern-sensor-independent-is-it-dark-fallback)
 - [Pattern: cancellable turn-off timer](#pattern-cancellable-turn-off-timer)
 - [Pattern: smoke / alarm escalation](#pattern-smoke--alarm-escalation)
 - [Pattern: power-by-the-hour cheap-window switch](#pattern-power-by-the-hour-cheap-window-switch)
@@ -119,6 +120,29 @@ Card IDs:
 - Condition: `homey:manager:logic` `is_sun_event_between` (args: `sun_event_a: "set"`, `offset_a: -60`, `sun_event_b: "rise"`, `offset_b: 0`).
 
 Worked example: `assets/flow-templates/examples/motion-sun-window-light.json`.
+
+## Pattern: sensor-independent "is it dark" fallback
+
+Most "turn lights on when dark" flows gate a single condition on one physical sensor's `measure_luminance`. If that sensor stops reporting (dead battery, dropped Zigbee link — see `pitfalls.md#logicltgt-conditions-compare-a-cached-value-not-a-live-poll`), the automation goes silently and permanently dark-blind: the cached value never re-evaluates, `broken: false` still shows, and nobody notices until someone's standing in the dark.
+
+**Right pattern:** OR-combine the luminance condition with Homey's built-in sun-state cards, so no single sensor is a single point of failure:
+
+```
+[trigger: whatever should turn the lights on]
+        |
+        v
+   [any: OR gate]
+   ├── condition: measure_luminance < 10            (existing sensor check)
+   ├── condition: cron:after_sunrise, inverted:true  ("before sunrise")
+   └── condition: cron:after_sunset, inverted:false  ("after sunset")
+        |
+        v (outputSuccess)
+[action: turn lights on]
+```
+
+The sun-state legs are astronomically calculated and never go stale, so they carry the automation through any period the physical sensor is offline. The luminance leg stays in the OR so the flow still catches daytime-but-dark cases (heavy overcast, closed blinds) that sun-state alone can't. See `pitfalls.md#cronafter_sunriseafter_sunset-are-a-different-instant-based-card-family` for the exact card ids/args.
+
+Applied in production to fix a "kitchen lights don't turn on when the alarm disarms" bug where the gating sensor had silently stopped reporting for ~19 days.
 
 ## Pattern: cancellable turn-off timer
 

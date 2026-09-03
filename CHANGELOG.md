@@ -2,6 +2,12 @@
 
 Newest on top. Format: `## YYYY-MM-DD`.
 
+## 2026-09-03
+
+### Added
+- `references/pitfalls.md`: 3 new gotchas from a real debugging session (kitchen/woonkamer lights not turning on when the alarm disarmed) — `logic:lt`/`gt` conditions compare a cached capability value, not a live poll, so a sleepy/dead Zigbee sensor can silently break a flow for days without tripping `broken: false`; `cron:after_sunrise`/`after_sunset` are a separate, instant-based sun-condition card family from the Logic app's window-semantics cards documented earlier, toggled via the `inverted` flag; Homey Cloud API rate limits are shared account-wide across concurrent sessions, not per-process, and can take 20+ minutes to clear once tripped.
+- `references/community-patterns.md`: new pattern "sensor-independent 'is it dark' fallback" — OR-combine a luminance condition with the `cron` sun-state cards so a single offline sensor can't silently kill a light automation. Applied in production to fix the bug above.
+
 ## 2026-06-23
 
 ### Changed
