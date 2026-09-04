@@ -119,6 +119,7 @@ The 8-step workflow below is the spine of this skill. Follow it in order — eve
 
 - **Modify existing flow:** prepend step 0 (export baseline) and treat step 8 as High tier (backup required).
 - **Pure exploration** ("what can this app do in flows?"): steps 2–3 only.
+- **"Does this device already have automation?"**: don't answer from flow-name keyword search alone — a flow can be named anything. Grep every flow for the device id directly: `references/community-patterns.md#audit-before-refactor-who-references-this-device`.
 
 ### What not to do
 

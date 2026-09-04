@@ -385,6 +385,8 @@ Source: `homey-smoke-detector` reply chain, esp. the "Simple Log" recommendation
 
 Before deleting a device, removing a zone, or renaming an app, find every flow that mentions it. Native Homey shows no cross-references — you only see breakage after.
 
+Also run this **before concluding a device has no existing automation** — not just before refactors. Flow-name keyword search (e.g. filtering advanced-flow names for "climate" or "ventilation") misses a flow named anything else, including one named literally after the devices it controls in the house's own language ("Ont/Bevochtigers" for humidifier/dehumidifier plugs matched no domain-keyword search but would have matched a device-id grep instantly). Treat "does X already have a flow?" as the same question as "what references X?" and use the same technique.
+
 Two ways:
 
 1. **HomeyScript audit** — Arie_J_Godschalk's "Find Any Items" script iterates all flows and matches device / zone / app / variable IDs. Returns a list. Already included in the Device Capabilities app as an action card.

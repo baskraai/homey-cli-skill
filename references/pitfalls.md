@@ -136,8 +136,11 @@ The active Homey id lives in a per-machine cache directory (managed by the `home
 - The cloud is slow or down.
 - Operating from inside the home network without internet.
 - Using a guest token (non-owner access).
+- **The cloud rate limit is hit** (see below) — local mode isn't subject to it at all, so it's the fastest way out of a persistent 429, not just a workaround for downtime.
 
-The bearer token comes from `homey api sessions create-session` or from the Homey developer tools.
+The bearer token comes from `homey api sessions create-session`, the Homey developer tools, or a Local API Key generated in the Homey app (Settings → System → API keys) — ask the user where theirs is stored (often a password manager) rather than assuming `create-session`.
+
+`--address` needs a full URL (`http://<ip>`), not a bare IP — and if the user gives you a LAN IP without confirming the port/protocol, `http://<ip>` (no port) is the default to try first.
 
 ## Cloud API rate limits are shared account-wide, not per-process
 
@@ -147,10 +150,11 @@ Observed: three concurrent Claude Code sessions against the same Homey each hit 
 
 **If you hit persistent 429s:**
 
-1. Check for other active sessions before assuming it's a bug — a peer running the same skill against the same Homey is the most common cause.
-2. Don't backoff-and-retry solo if others might be doing the same — each retry resets the shared window. Coordinate a shared pause instead.
-3. Expect the cooldown to take tens of minutes, not seconds.
-4. After a suspected clear, send one lightweight probe (`homey api zones get-zones --json --jq 'keys | length'`) before resuming normal call volume.
+1. **Fastest fix if you're on the home LAN: switch to local token mode** (`--address`/`--token`, see [Token-mode for direct IP access](#token-mode-for-direct-ip-access) above) — it bypasses the cloud entirely, no cooldown wait needed. Ask the user for their Local API Key if you don't have it.
+2. If local access isn't available: check for other active sessions before assuming it's a bug — a peer running the same skill against the same Homey is the most common cause.
+3. Don't backoff-and-retry solo if others might be doing the same — each retry resets the shared window. Coordinate a shared pause instead.
+4. Expect the cooldown to take tens of minutes, not seconds.
+5. After a suspected clear, send one lightweight probe (`homey api zones get-zones --json --jq 'keys | length'`) before resuming normal call volume.
 
 ## Update silently overwrites — always back up
 
